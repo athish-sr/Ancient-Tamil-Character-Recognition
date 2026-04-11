@@ -3,6 +3,7 @@ import numpy as np
 import os
 import torch
 import torch.nn as nn
+from pathlib import Path
 from torchvision import models, transforms
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
@@ -206,9 +207,18 @@ def predict_char(img):
 # -----------------------------
 def run_ocr(image_path):
 
+    image_path = str(Path(image_path))
+
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Input image not found: {image_path}")
+
     img=cv2.imread(image_path)
 
-    base=os.path.splitext(image_path)[0]
+    if img is None:
+        raise ValueError(f"OpenCV could not read image: {image_path}")
+
+    input_path = Path(image_path)
+    base = input_path.stem
 
     out_dir="ocr_output"
 
@@ -260,14 +270,19 @@ def run_ocr(image_path):
 
     result_img=cv2.cvtColor(np.array(pil_img),cv2.COLOR_RGB2BGR)
 
-    cv2.imwrite(out_dir+"/"+base+"_result.jpg",result_img)
+    result_path = Path(out_dir) / f"{base}_result.jpg"
+    saved = cv2.imwrite(str(result_path), result_img)
+
+    if not saved:
+        raise IOError(f"Failed to save output image: {result_path}")
 
     text="".join(p for _,_,_,_,p in results)
 
     print("\nTamil Text:\n",text)
+    print(f"Saved output image: {result_path}")
 
 
 # -----------------------------
 # Run
 # -----------------------------
-run_ocr("11.png")
+run_ocr(r"test_images_cleaned\51.jpg_cleaned.png")
