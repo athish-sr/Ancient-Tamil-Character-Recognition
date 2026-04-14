@@ -1,39 +1,50 @@
 # Ancient Tamil Character Recognition
 
-This project contains image preprocessing and character extraction pipelines for ancient Tamil inscription images.
+This project recognizes ancient Tamil inscription characters using image preprocessing, character region detection, and a ResNet18 classifier.
 
-## Scripts
+## Complete Project Flow
 
-### `wavelet.py`
+1. Prepare labeled character dataset in `labeled_data_final/`.
+2. Train classifier using `model_training.py`.
+3. Save trained weights as `tamil_inscription_model.pth`.
+4. Run one of the preprocessing/detection pipelines:
+	- `wavelet.py` (wavelet + CLAHE branch)
+	- `test_images.py` (neural cleaning branch)
+	- `hybrid_ocr.py` (combined branch, recommended)
+5. Predict character labels for extracted regions.
+6. Generate annotated result images and recognized text.
 
-Combined pipeline that does:
+## Project Components
 
-1. Preprocessing:
-- Load image
-- Grayscale conversion
-- Wavelet denoising
-- CLAHE enhancement
+### 1) Training (`model_training.py`)
 
-2. Character detection:
-- Binarization (Otsu + morphology)
-- Contour filtering
-- Green bounding boxes
-- Character crop extraction
+- Loads data from `labeled_data_final/` with grayscale + resize + augmentation.
+- Trains `torchvision.models.resnet18` for multi-class Tamil character classification.
+- Saves trained model to `tamil_inscription_model.pth`.
 
-Input folder:
-- `test_images/`
+Run:
 
-Output folder:
-- `wavelet_output/`
+```bash
+python model_training.py
+```
 
-Per image output (inside `wavelet_output/<image_name>/`):
-- `01_original.jpg`
-- `02_grayscale.jpg`
-- `03_wavelet.jpg`
-- `04_clahe.jpg`
-- `binary_for_detection.jpg`
-- `clahe_bounding_boxes.jpg`
-- `characters/char_*.png`
+### 2) Wavelet Detection Branch (`wavelet.py`)
+
+Purpose:
+- Strong contour-based localization of character bounding boxes.
+
+Pipeline:
+1. Load image from `test_images/`.
+2. Convert to grayscale.
+3. Apply wavelet denoising (`db2`, level=2).
+4. Apply CLAHE enhancement.
+5. Binarize (Gaussian blur + Otsu + optional inversion).
+6. Morphological opening.
+7. Detect contours and filter by width/height/area.
+8. Save bounding boxes and cropped character patches.
+
+Default output:
+- `wavelet_output/<image_name>/`
 
 Run:
 
@@ -41,14 +52,19 @@ Run:
 python wavelet.py
 ```
 
-### `test_images.py`
+### 3) Neural Cleaning Branch (`test_images.py`)
 
-Neural-enhancement based OCR preprocessing pipeline that:
+Purpose:
+- Produce cleaner character foreground mask before extraction.
 
-- Reads images from `test_images/`
-- Produces cleaned images
-- Draws bounding boxes
-- Extracts normalized character crops
+Pipeline:
+1. Load grayscale image and normalize to `[0,1]`.
+2. Apply `StoneEnhancer` CNN (noise estimation and subtraction).
+3. Gaussian smoothing.
+4. Sauvola thresholding.
+5. Morphological cleanup.
+6. Connected component filtering.
+7. Save cleaned image, optional boxes, and extracted normalized character crops.
 
 Default outputs:
 - `test_images_output/`
@@ -61,34 +77,47 @@ Run:
 python test_images.py
 ```
 
-## Neural Enhancement Pipeline (`test_images.py`)
 
-Processing flow per image:
+### 4) Hybrid OCR (`hybrid_ocr.py`) - Current End-to-End Pipeline
 
-1. Load image in grayscale and normalize to `[0, 1]`.
-2. Pass through `StoneEnhancer` CNN (`conv -> relu -> conv -> relu -> conv`) to estimate and subtract noise.
-3. Save neural-enhanced result: `step_03_nn_enhanced.jpg`.
-4. Apply Gaussian smoothing (`sigma=1.5`) and save: `step_04_smoothed.jpg`.
-5. Apply Sauvola thresholding (`window_size=75`, `k=0.15`) and save binary: `step_05_binary.jpg`.
-6. Remove small objects and apply morphological closing, then save: `step_06_cleaned.jpg`.
-7. Run connected-component analysis and region filtering (area, size, aspect ratio).
-8. Draw bounding boxes and save: `step_07_bounding_boxes.jpg`.
-9. Crop each detected region, normalize each character to `64x64`, and save to `extracted_characters/`.
+Purpose:
+- Use wavelet branch for stable bounding boxes.
+- Use neural branch for cleaner pixels.
+- Predict with the trained classifier.
+- Annotate predictions on the cleaned image.
 
-Additional cleaned-image dataset output:
+Exact flow per input image:
+1. Branch A (`wavelet.py` logic): generate wavelet/CLAHE image and detect bounding boxes.
+2. Branch B (`test_images.py` logic): generate cleaned binary-like image.
+3. Reuse Branch A boxes on Branch B cleaned image.
+4. Crop each cleaned character region using wavelet box coordinates.
+5. Normalize crop to square (`64x64` intermediate), then transform to model size (`224x224`).
+6. Predict Tamil class using `tamil_inscription_model.pth`.
+7. Draw green bounding box + predicted label text above the box on cleaned image.
+8. Save final annotated image and print recognized sequence.
 
-- `test_images_cleaned/<image_name>_cleaned.png`
+Output structure:
+- `hybrid_ocr_output/<image_name>/wavelet/`
+- `hybrid_ocr_output/<image_name>/cleaned/`
+- `hybrid_ocr_output/<image_name>/final/<image_name>_annotated_on_cleaned.jpg`
+
+Run:
+
+```bash
+python hybrid_ocr.py
+```
 
 ## Installation
 
-Create and activate a virtual environment, then install dependencies:
+Create and activate virtual environment, then install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
+## Important Paths
 
-## Notes
+- Input images: `test_images/`
+- Labels dataset: `labeled_data_final/`
+- Trained weights: `tamil_inscription_model.pth`
 
-- `wavelet.py` recreates `wavelet_output/` on each run.
-- Bounding boxes in `wavelet.py` are drawn in green.
