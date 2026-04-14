@@ -1,0 +1,7 @@
+env/
+ocr_output/
+hybrid_ocr_output/
+wavelet_output/
+test_images_output/
+test_images_cleaned/
+extracted_characters/
